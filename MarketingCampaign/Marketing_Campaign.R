@@ -34,7 +34,11 @@
     #2.C5.0 Decision tree algorithm
       #a.Evaluate model using support-20%, confidence - 80%, Lift > 1
       #b.Predict model accuracy - confusion matrix
-
+    #3.Random Forest
+    #4.Logistic Regression
+    #5.KNN Implementation
+    #6.Naive Bayes
+  #10.Concusion
 ###########################################Load the data##########################################
 #Clean R environment
 rm(list = ls(all = T))
