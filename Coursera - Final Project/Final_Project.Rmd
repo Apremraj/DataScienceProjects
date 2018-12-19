@@ -1,0 +1,170 @@
+---
+title: "Practical Machine Learning - Final Project"
+author: "Ashish premraj"
+date: "November 20, 2017"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Project Description
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+For this project I have used 3 differnt model algorithms and then finalized on one to see which provides the best out-of-sample accuracty. The three model types I'm going to test are:
+
+1. Decision trees - (rpart)
+2. Gradient boosting algorithm - (gbm)
+3. Random forest decision trees - (rf)
+
+## Data Loading and Data Preparation
+
+### Loading Data and packages
+```{r }
+library(caret)
+```
+
+```{r }
+training <- read.csv("C:/Ashish/Others/R/Coursera/Scripts-20171101T052822Z-001/Scripts/Final Project/data/pml-training.csv")
+testing <- read.csv("C:/Ashish/Others/R/Coursera/Scripts-20171101T052822Z-001/Scripts/Final Project/data/pml-testing.csv")
+```
+
+### Split training data into train and validation sets
+
+```{r training, echo= TRUE}
+set.seed(100)
+inTrain <- createDataPartition(y = training$classe, p =0.7, list = F)
+t_train <- training[inTrain,]
+t_val <- training[-inTrain,]
+```
+
+## Data Cleaning and Manipulation
+There seems to be many records with NAs and zero variances. We need to get rid of those for better prediction
+1. Remove near zero variance
+2. Remove variables with NAs
+3. Remove columns that are not needed for our prediction
+
+```{r }
+#remove variables with near zero variance
+nzv <- nearZeroVar(t_train, saveMetrics = TRUE)
+t_train <- t_train[,nzv$nzv==FALSE]
+nzv <- nearZeroVar(t_val,saveMetrics = T)
+t_val <- t_val[,nzv$nzv==FALSE]
+
+#remove variables that are NAs
+mostlyNA <- sapply(t_train, function(x){mean(is.na(x))})>0.95
+t_train <- t_train[,mostlyNA == FALSE]
+
+mostlyNA <- sapply(t_val, function(x){mean(is.na(x))})>0.95
+t_val <- t_val[,mostlyNA == FALSE]
+
+#remove columns that are not needed for prediction
+t_train <- t_train[, -(1:5)]
+t_val <- t_val[, -(1:5)]
+```
+
+## Data Modelling
+Next step is to build our prediction model. I have used three differnt approaches. 
+1. Decision trees - model_decision
+2. Gradient boosting algorithm - model_gbm
+3. Random forest decision trees - model_rf
+
+Evaluate the model using confusion matrix to find which one of these models gives high accuracy.
+
+```{r echo=TRUE, results='hide', message= FALSE, warning= FALSE}
+fit_control <- trainControl(method = "cv", number = 3)
+model_decision <- train(classe ~.,data = t_train, method = "rpart",
+                        trControl = fit_control)
+
+
+model_gbm <- train(classe ~.,data = t_train, method = "gbm",
+                   trControl = fit_control)
+
+model_rf <- train(classe ~., data = t_train, method = "rf",
+                  trControl = fit_control)
+
+#Model Evaluation(Out of sample error)
+p_Decision <- predict(model_decision, newdata = t_val)
+c_Decision <- confusionMatrix(p_Decision, t_val$classe)
+
+p_Gbm <- predict(model_gbm, t_val)
+c_Gbm <- confusionMatrix(p_Gbm, t_val$classe)
+
+p_rf <- predict(model_rf, t_val)
+c_rf <- confusionMatrix(p_rf, t_val$classe)
+```
+
+Seems like Random Forest gives us the highest accuracy level of 99% compared to the other two. 
+```{r }
+Accuracy_Matrix <- data.frame(
+  Model = c("Decision Tree","Gradient Boost","Random Forest"),
+  Accuracy = rbind(c_Decision$overall[1], c_Gbm$overall[1],c_rf$overall[1])
+)
+
+print(Accuracy_Matrix)
+```
+
+## Retraining the selected Model on training dataset
+
+Now that we know Random Forest gives us the high level of Accuracy, let's Re-train the model on training dataset and use our predictions on testing dataset.
+
+```{r echo= TRUE, results='hide'}
+nzv <- nearZeroVar(training, saveMetrics = T)
+training <- training[,nzv$nzv == F]
+
+nzv <- nearZeroVar(testing, saveMetrics = T)
+testing <- testing[,nzv$nzv == F]
+
+#remove variables that are NAs
+mostlyNA <- sapply(training, function(x){mean(is.na(x))})>0.95
+training <- training[,mostlyNA == FALSE]
+
+mostlyNA <- sapply(testing, function(x){mean(is.na(x))})>0.95
+testing <- testing[,mostlyNA == FALSE]
+
+#remove variables that are not needed for prediction
+training <- training[, -(1:5)]
+testing <- testing[, -(1:5)]
+
+fit_control <- trainControl(method = "cv", number = 3)
+
+model_Decision <- train(classe ~., data = training, method = "rpart",
+                    trControl = fit_control)
+model_Gbm <- train(classe ~., data = training, method = "gbm",
+               trControl = fit_control)  
+model_rf <- train(classe~., data = training, method = "rf",
+              trControl = fit_control)
+```
+
+## Predicting model based on Test dataset
+```{r }
+p_Decision <- predict(model_Decision, newdata = testing)
+p_Gbm <- predict(model_Gbm, newdata = testing)
+
+#Model which has highest accuracy
+p_rf <- predict(model_rf, newdata = testing)
+
+Validation <- data.frame(
+  problem_id = testing$problem_id,
+  Predicted = p_rf
+)
+  
+print(Validation)
+ 
+#Create function to write predictions to files 
+pml_write_files <- function(x) {
+  n <- length(x)
+  for(i in 1:n) {
+    filename <- paste0("problem_id_", i, ".txt")
+    write.table(x[i], file=filename, quote=F, row.names=F, col.names=F)
+  }
+}
+
+#pml_write_files(p_rf)
+```
+
+
